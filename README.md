@@ -1,6 +1,5 @@
-# Deep Learning Training Zone
+<h1 align="center">
+  <b>AI GYM</b><br>
+</h1>
 
-This repository serves as a composition of various models and their training pipeline implementation.
 
-- ldms: Latent Diffusion Models
-- llms: Large Language Models
