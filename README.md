@@ -3,6 +3,13 @@
 </h1>
 
 
+### Matrix Multiplication
+
+```sh
+clang -O2 -march=native -mavx gemm.c -o gemm
+./gemm
+```
+
 ### Links
 
 - [Tutorial](https://www.gocoder.one/blog/rl-tutorial-with-openai-gym/): An Introduction to Reinforcement Learning Using OpenAI Gym

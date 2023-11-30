@@ -1,4 +1,7 @@
 """General Matrix Multiplication (GEMM) operator."""
+import os
+# Restrict numpy to single thread.
+os.environ['OMP_NUM_THREADS'] = '1'
 import argparse
 import time
 import numpy as np
