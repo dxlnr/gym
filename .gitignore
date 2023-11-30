@@ -1,3 +1,6 @@
 notebooks/.env
 notebooks/.ipynb_checkpoints/rag-chatbot-checkpoint.ipynb
 notebooks/rag-chatbot.ipynb
+
+# Ignore executable
+gemm
