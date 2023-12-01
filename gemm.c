@@ -67,7 +67,6 @@ int main() {
 
   check_mm(C, CREF, N*N);
   printf("(tiled) time: %f\n", dur);
-  printf("%.2f GFLOPS. (numpy ~ 95 GFLOPS (single thread)) \n\n", 2.0*N*N*N/dur/1e9);
 
 #elif TILE
   
@@ -91,16 +90,42 @@ int main() {
 
   check_mm(C, CREF, N*N);
   printf("(tiled) time: %f\n", dur);
-  printf("%.2f GFLOPS. (numpy ~ 95 GFLOPS (single thread)) \n\n", 2.0*N*N*N/dur/1e9);
 
 #else
+
+  for (int i = 0; i < N; i += BLOCK) {
+    for (int j = 0; j < N; j += BLOCK) {
+
+      float tc[BLOCK][BLOCK] __attribute__((aligned(32)));
+      for (int bi = 0; bi < BLOCK; ++bi) {
+        for (int bj = 0; bj < BLOCK; ++bj) {
+          __m256 t = _mm256_setzero_ps();
+          for (int k = 0; k < N; k += BLOCK) {
+            t = _mm256_fmadd_ps(A256[((bi+i)*N + k)/8], B256[((bj+j)*N + k)/8], t);
+          }
+          float ft = 0.0;
+          for (int k = 0; k < 8; ++k) {
+            ft += ((float*)&t)[k];
+          }
+          tc[bi][bj] = ft;
+        }
+      }
+
+      for (int bi = 0; bi < BLOCK; ++bi) {
+        for (int bj = 0; bj < BLOCK; ++bj) {
+          C[((i+bi)*N)+(j+bj)] = tc[bi][bj];
+        }
+      }
+    }
+  }
+
 
   clock_t et = clock();
   double dur = (double)(et - st) / CLOCKS_PER_SEC;
 
   printf("(vfma) time: %f\n", dur);
-  printf("%.2f GFLOPS.\n\n", 2.0*N*N*N/dur/1e9);
 #endif
+  printf("%.2f GFLOPS. (numpy ~ 95 GFLOPS (single thread)) \n\n", 2.0*N*N*N/dur/1e9);
 
   return 0;
 }
