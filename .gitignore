@@ -4,3 +4,6 @@ notebooks/rag-chatbot.ipynb
 
 # Ignore executable
 gemm
+
+# ignore data in tests
+tests/mat/*
