@@ -71,8 +71,8 @@ int main() {
 #elif TILE
   
   for (int i = 0; i < N; i += BLOCK) {
-    for (int j = 0; j < N; j += BLOCK) {
-      for (int k = 0; k < N; k += BLOCK) {
+    for (int k = 0; k < N; k += BLOCK) {
+      for (int j = 0; j < N; j += BLOCK) {
 
         for (int bi = 0; bi < BLOCK; ++bi) {
           for (int bj = 0; bj < BLOCK; ++bj) {
@@ -93,36 +93,49 @@ int main() {
 
 #else
 
-  for (int i = 0; i < N; i += BLOCK) {
-    for (int j = 0; j < N; j += BLOCK) {
+/*   for (int i = 0; i < N; i += BLOCK) { */
+/*     for (int j = 0; j < N; j += BLOCK) { */
 
-      float tc[BLOCK][BLOCK] __attribute__((aligned(32)));
-      for (int bi = 0; bi < BLOCK; ++bi) {
-        for (int bj = 0; bj < BLOCK; ++bj) {
-          __m256 t = _mm256_setzero_ps();
-          for (int k = 0; k < N; k += BLOCK) {
-            t = _mm256_fmadd_ps(A256[((bi+i)*N + k)/8], B256[((bj+j)*N + k)/8], t);
-          }
-          float ft = 0.0;
-          for (int k = 0; k < 8; ++k) {
-            ft += ((float*)&t)[k];
-          }
-          tc[bi][bj] = ft;
-        }
-      }
+/*       float tc[BLOCK][BLOCK] __attribute__((aligned(32))); */
+/*       for (int bi = 0; bi < BLOCK; ++bi) { */
+/*         for (int bj = 0; bj < BLOCK; ++bj) { */
+/*           __m256 t = _mm256_setzero_ps(); */
+/*           for (int k = 0; k < N; k += BLOCK) { */
+/*             t = _mm256_fmadd_ps(A256[((bi+i)*N + k)/8], B256[((bj+j)*N + k)/8], t); */
+/*           } */
+/*           float ft = 0.0; */
+/*           for (int k = 0; k < 8; ++k) { */
+/*             ft += ((float*)&t)[k]; */
+/*           } */
+/*           tc[bi][bj] = ft; */
+/*         } */
+/*       } */
 
-      for (int bi = 0; bi < BLOCK; ++bi) {
-        for (int bj = 0; bj < BLOCK; ++bj) {
-          C[((i+bi)*N)+(j+bj)] = tc[bi][bj];
-        }
+/*       for (int bi = 0; bi < BLOCK; ++bi) { */
+/*         for (int bj = 0; bj < BLOCK; ++bj) { */
+/*           C[((i+bi)*N)+(j+bj)] = tc[bi][bj]; */
+/*         } */
+/*       } */
+/*     } */
+/*   } */
+
+  for (int i = 0; i < N; ++i) {
+    for (int j = 0; j < N; j += 8) {
+      __m256 c_row = _mm256_setzero_ps();
+
+      for (int k = 0; k < N; ++k) {
+        __m256 a = _mm256_broadcast_ss(&A[(i*N) + k]);
+        __m256 b = _mm256_load_ps(&B[(k*N) + j]);
+        c_row = _mm256_fmadd_ps(a, b, c_row);
       }
+      _mm256_store_ps(&C[(i*N) + j], c_row);
     }
   }
-
 
   clock_t et = clock();
   double dur = (double)(et - st) / CLOCKS_PER_SEC;
 
+  check_mm(C, CREF, N*N);
   printf("(vfma) time: %f\n", dur);
 #endif
   printf("%.2f GFLOPS. (numpy ~ 95 GFLOPS (single thread)) \n\n", 2.0*N*N*N/dur/1e9);
