@@ -5,14 +5,19 @@
 
 ### Matrix Multiplication
 
+Currently `-DTILE` matmul is fastest.
 ```sh
 # Performance check (Cache)
 valgrind --tool=cachegrind ./gemm
 # Compiling (using tiling)
-clang -O2 -DTILE -march=native -mavx gemm.c -o gemm
+clang -O2 -DTILE -ffast-math -march=native gemm.c -o gemm
 # Run
 ./gemm
 ```
+
+Performance Metrics: 
+
+Theoretical Max FLOPS: (Max) Clock Speed x FLOPs per cylce x number of cores
 
 ### Links
 

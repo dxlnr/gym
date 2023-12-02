@@ -28,11 +28,13 @@ void transpose(float *A, float *B, int N, int M)
 
 #define N 1024
 #define BLOCK 8
+#define BLOCK_Y 2
+#define BLOCK_X 4
 
-float A[N*N] __attribute__((aligned(32)));
-float B[N*N] __attribute__((aligned(32)));
-float C[N*N] __attribute__((aligned(32)));
-float CREF[N*N] __attribute__((aligned(32)));
+float A[N*N] __attribute__((aligned(64)));
+float B[N*N] __attribute__((aligned(64)));
+float C[N*N] __attribute__((aligned(64)));
+float CREF[N*N] __attribute__((aligned(64)));
 
 __m256* A256 = (__m256*)A;
 __m256* B256 = (__m256*)B;
@@ -42,6 +44,10 @@ int main() {
   assert(N%BLOCK == 0);
 
   FILE *fa = fopen("tests/mat/matA", "rb");
+  if (fa == NULL) {
+    printf("please tests/mat/matA file using numpy. Run:\npython gemm.py --save\n");
+    return -1;
+  }
   fread(A, sizeof(float), N*N, fa);
   FILE *fb = fopen("tests/mat/matB", "rb");
   fread(B, sizeof(float), N*N, fb);
@@ -69,7 +75,6 @@ int main() {
       for (int j = 0; j < N; j += BLOCK) {
 
         for (int bi = 0; bi < BLOCK; ++bi) {
-          /* for (int bk = 0; bk < BLOCK; ++bk) { */
           for (int bj = 0; bj < BLOCK; ++bj) {
             for (int bk = 0; bk < BLOCK; ++bk) {
               C[((i+bi)*N)+(j+bj)] += A[((i+bi)*N)+(k+bk)] * B[((k+bk)*N)+(j+bj)];
@@ -83,7 +88,7 @@ int main() {
 #elif TALLS
 
   for (int i = 0; i < N; ++i) {
-    for (int j = 0; j < N; j += 8) {
+    for (int j = 0; j < N; j += BLOCK) {
       __m256 c_row = _mm256_setzero_ps();
 
       for (int k = 0; k < N; ++k) {
@@ -97,27 +102,21 @@ int main() {
 
 #else
 
-  for (int i = 0; i < N; i += BLOCK) {
-    for (int j = 0; j < N; j += BLOCK) {
+  for (int i = 0; i < N; i += BLOCK_X) {
+    for (int j = 0; j < N; j += BLOCK*BLOCK_Y) {
 
-      float tc[BLOCK][BLOCK] __attribute__((aligned(32)));
-      for (int bi = 0; bi < BLOCK; ++bi) {
-        for (int bj = 0; bj < BLOCK; ++bj) {
-          __m256 t = _mm256_setzero_ps();
-          for (int k = 0; k < N; k += BLOCK) {
-            t = _mm256_fmadd_ps(A256[((bi+i)*N + k)/8], B256[((bj+j)*N + k)/8], t);
+      __m256 a[BLOCK_X][BLOCK_Y] = {};
+      for (int k = 0; k < N; ++k) {
+        for (int bi = 0; bi < BLOCK_X; ++bi) {
+          __m256 ta = _mm256_broadcast_ss(&A[(i+bi)*N + k]);
+          for (int bj = 0; bj < BLOCK_Y; ++bj) {
+            a[bi][bj] = _mm256_fmadd_ps(ta, B256[((j+bj*BLOCK)*N + k*8)/8], a[bi][bj]);
           }
-          float ft = 0.0;
-          for (int k = 0; k < 8; ++k) {
-            ft += ((float*)&t)[k];
-          }
-          tc[bi][bj] = ft;
         }
       }
-
-      for (int bi = 0; bi < BLOCK; ++bi) {
-        for (int bj = 0; bj < BLOCK; ++bj) {
-          C[((i+bi)*N)+(j+bj)] = tc[bi][bj];
+      for (int bi = 0; bi < BLOCK_X; ++bi) {
+        for (int bj = 0; bj < BLOCK_Y; ++bj) {
+          C256[((i+bi)*N + j + bj*BLOCK)/8] = a[bi][bj];
         }
       }
     }

@@ -21,6 +21,8 @@ if __name__ == "__main__":
     B = np.random.rand(N, N).astype(np.float32)
 
     if args.save:
+        if not os.path.exists("tests/mat"):
+            os.makedirs("tests/mat")
         with open("tests/mat/matA", "wb") as f:
             f.write(A.data)
         with open("tests/mat/matB", "wb") as f:
