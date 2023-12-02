@@ -7,3 +7,6 @@ gemm
 
 # ignore data in tests
 tests/mat/*
+
+#
+cachegrind*

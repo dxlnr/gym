@@ -6,7 +6,11 @@
 ### Matrix Multiplication
 
 ```sh
-clang -O2 -march=native -mavx gemm.c -o gemm
+# Performance check (Cache)
+valgrind --tool=cachegrind ./gemm
+# Compiling (using tiling)
+clang -O2 -DTILE -march=native -mavx gemm.c -o gemm
+# Run
 ./gemm
 ```
 
