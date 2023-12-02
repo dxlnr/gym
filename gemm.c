@@ -26,6 +26,7 @@ void transpose(float *A, float *B, int N, int M)
   }
 }
 
+
 #define N 1024
 #define BLOCK 8
 #define BLOCK_Y 2
@@ -40,24 +41,8 @@ __m256* A256 = (__m256*)A;
 __m256* B256 = (__m256*)B;
 __m256* C256 = (__m256*)C;
 
-int main() {
-  assert(N%BLOCK == 0);
-
-  FILE *fa = fopen("tests/mat/matA", "rb");
-  if (fa == NULL) {
-    printf("please tests/mat/matA file using numpy. Run:\npython gemm.py --save\n");
-    return -1;
-  }
-  fread(A, sizeof(float), N*N, fa);
-  FILE *fb = fopen("tests/mat/matB", "rb");
-  fread(B, sizeof(float), N*N, fb);
-  FILE *fc = fopen("tests/mat/matC", "rb");
-  fread(CREF, sizeof(float), N*N, fc);
-  fclose(fa);
-  fclose(fb);
-  fclose(fc);
-
-  clock_t st = clock();
+void matmul()
+{
 #ifdef NAIVE
 
   for (int i = 0; i < N; ++i) {
@@ -69,7 +54,6 @@ int main() {
   }
 
 #elif TILE
-  
   for (int i = 0; i < N; i += BLOCK) {
     for (int k = 0; k < N; k += BLOCK) {
       for (int j = 0; j < N; j += BLOCK) {
@@ -86,7 +70,6 @@ int main() {
   }
 
 #elif TALLS
-
   for (int i = 0; i < N; ++i) {
     for (int j = 0; j < N; j += BLOCK) {
       __m256 c_row = _mm256_setzero_ps();
@@ -101,7 +84,6 @@ int main() {
   }
 
 #else
-
   for (int i = 0; i < N; i += BLOCK_X) {
     for (int j = 0; j < N; j += BLOCK*BLOCK_Y) {
 
@@ -123,6 +105,33 @@ int main() {
   }
 
 #endif
+}
+
+#define NTHREADS 8
+void *matmul_threaded(void *n) 
+{
+  return NULL;
+}
+
+int main() {
+  assert(N%BLOCK == 0);
+
+  FILE *fa = fopen("tests/mat/matA", "rb");
+  if (fa == NULL) {
+    printf("please tests/mat/matA file using numpy. Run:\npython gemm.py --save\n");
+    return -1;
+  }
+  fread(A, sizeof(float), N*N, fa);
+  FILE *fb = fopen("tests/mat/matB", "rb");
+  fread(B, sizeof(float), N*N, fb);
+  FILE *fc = fopen("tests/mat/matC", "rb");
+  fread(CREF, sizeof(float), N*N, fc);
+  fclose(fa);
+  fclose(fb);
+  fclose(fc);
+
+  clock_t st = clock();
+  matmul();
   clock_t et = clock();
   double dur = (double)(et - st) / CLOCKS_PER_SEC;
 
