@@ -8,7 +8,9 @@
 #include <assert.h>
 #include <stdint.h>
 #include <immintrin.h>
+#include <unistd.h>
 #include <pthread.h>
+#include <stdatomic.h>
 
 void check_mm(float* C, float* CREF, int N) 
 {
@@ -30,7 +32,19 @@ void transpose(float *A, float *B, int N, int M)
   }
 }
 
-#define N 1024
+uint64_t get_time() {
+  struct timespec start;
+  clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+  return (uint64_t)start.tv_sec*1e9+ (uint64_t)start.tv_nsec;
+}
+
+#ifndef NTHREADS
+  #define NTHREADS 1
+#endif
+
+#ifndef N
+  #define N 1024
+#endif
 #define BLOCK 8
 #define BLOCK_Y 2
 #define BLOCK_X 4
@@ -70,7 +84,7 @@ void matmul(int ii, int iN)
     }
   }
 #elif TALLS
-  for (int i = 0; i < N; ++i) {
+  for (int i = ii; i < iN; ++i) {
     for (int j = 0; j < N; j += BLOCK) {
       __m256 c_row = _mm256_setzero_ps();
 
@@ -124,36 +138,33 @@ void matmul(int ii, int iN)
 #endif
 }
 
-#define NTHREADS 8
+pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+atomic_int tready = 0;
+atomic_int tdone = 0;
+
 void *matmul_single_thread(void *n) 
 {
-  pthread_attr_t attr;
   cpu_set_t set;
   int k = (int)(int64_t)n;
   int lb = (int)(uint64_t)n * N/NTHREADS;
-  int ub = (int)(uint64_t)n * N/NTHREADS;
+  int ub = (int)(uint64_t)(n + 1) * N/NTHREADS;
 
-  pthread_attr_init(&attr);
   CPU_ZERO(&set);
   CPU_SET(k, &set);
+  pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &set);
+
+  tready++;
+  pthread_mutex_lock(&lock);
+  pthread_mutex_unlock(&lock);
 
   matmul(lb, ub);
+  tdone++;
 
-  return NULL;
-}
-
-void *matmul_threaded() 
-{
-  assert(N % NTHREADS == 0 && "N must be divisible by NTHREADS.");
-  pthread_t threads[NTHREADS];
-
-  for (int i = 0; i < NTHREADS; i++) {
-    int threadCreate = pthread_create(&threads[i], NULL, matmul_single_thread, (void *)(uint64_t) i);
-  }
   return NULL;
 }
 
 int main() {
+  printf("Running GEMM %dx%d with %d threads.\n",N,N,NTHREADS);
   assert(N%BLOCK == 0);
 
   FILE *fa = fopen("tests/mat/matA", "rb");
@@ -170,14 +181,32 @@ int main() {
   fclose(fb);
   fclose(fc);
 
-  clock_t st = clock();
-#if NTHREADS == 1
-    matmul(0, N);
-#else
-  matmul_threaded();
+#if NTHREADS != 1
+  assert(N % NTHREADS == 0 && "N must be divisible by NTHREADS.");
+  pthread_t threads[NTHREADS];
+
+  pthread_mutex_lock(&lock);
+  for (int i = 0; i < NTHREADS; i++) {
+    pthread_create(&threads[i], NULL, matmul_single_thread, (void *)(uint64_t) i);
+  }
+  while (tready != NTHREADS) usleep(1);
 #endif
-  clock_t et = clock();
-  double dur = (double)(et - st) / CLOCKS_PER_SEC;
+
+  uint64_t st = get_time();
+#if NTHREADS == 1
+  matmul(0, N);
+#else
+  pthread_mutex_unlock(&lock); // start threads
+  while (tdone != NTHREADS) usleep(1);
+#endif
+  uint64_t et = get_time();
+  double dur = (double)(et - st)/1e9;
+
+#if NTHREADS != 1
+  for (int i = 0; i < NTHREADS; i++) {
+    pthread_join(threads[i], NULL);
+  }
+#endif
 
   check_mm(C, CREF, N*N);
 #ifdef NAIVE
