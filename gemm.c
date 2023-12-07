@@ -1,9 +1,12 @@
 // clang -O2 -DTILE -march=native -mavx -lpthread gemm.c -o gemm
+#define _GNU_SOURCE
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
 #include <math.h>
 #include <assert.h>
+#include <stdint.h>
 #include <immintrin.h>
 #include <pthread.h>
 
@@ -121,21 +124,32 @@ void matmul(int ii, int iN)
 #endif
 }
 
-#define NTHREADS 1
+#define NTHREADS 8
+void *matmul_single_thread(void *n) 
+{
+  pthread_attr_t attr;
+  cpu_set_t set;
+  int k = (int)(int64_t)n;
+  int lb = (int)(uint64_t)n * N/NTHREADS;
+  int ub = (int)(uint64_t)n * N/NTHREADS;
+
+  pthread_attr_init(&attr);
+  CPU_ZERO(&set);
+  CPU_SET(k, &set);
+
+  matmul(lb, ub);
+
+  return NULL;
+}
+
 void *matmul_threaded() 
 {
+  assert(N % NTHREADS == 0 && "N must be divisible by NTHREADS.");
   pthread_t threads[NTHREADS];
 
-  int tstep = N/NTHREADS;
-  assert(N % NTHREADS == 0 && "N must be divisible by NTHREADS.");
-  printf("tstep: %d\n", tstep);
-  assert(tstep % BLOCK == 0);
-
-  /* for (int i = 0; i < NTHREADS; i++) { */
-  /*   int threadCreate = pthread_create(&threads[i], NULL, matmul, ((tstep*i), (tstep*(i+1))); */
-  /*   } */
-  /* } */
-  /* matmul(0, N); */
+  for (int i = 0; i < NTHREADS; i++) {
+    int threadCreate = pthread_create(&threads[i], NULL, matmul_single_thread, (void *)(uint64_t) i);
+  }
   return NULL;
 }
 
