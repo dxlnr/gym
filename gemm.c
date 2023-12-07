@@ -1,10 +1,11 @@
-// clang -O2 -DTILE -march=native -mavx gemm.c -o gemm
+// clang -O2 -DTILE -march=native -mavx -lpthread gemm.c -o gemm
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
 #include <math.h>
 #include <assert.h>
 #include <immintrin.h>
+#include <pthread.h>
 
 void check_mm(float* C, float* CREF, int N) 
 {
@@ -26,7 +27,6 @@ void transpose(float *A, float *B, int N, int M)
   }
 }
 
-
 #define N 1024
 #define BLOCK 8
 #define BLOCK_Y 2
@@ -41,20 +41,18 @@ __m256* A256 = (__m256*)A;
 __m256* B256 = (__m256*)B;
 __m256* C256 = (__m256*)C;
 
-void matmul()
+void matmul(int ii, int iN)
 {
 #ifdef NAIVE
-
-  for (int i = 0; i < N; ++i) {
+  for (int i = ii; i < iN; ++i) {
     for (int j = 0; j < N; ++j) {
       for (int k = 0; k < N; ++k) {
         C[(i*N)+j] += A[(i*N)+k] * B[(k*N)+j];
       }
     }
   }
-
 #elif TILE
-  for (int i = 0; i < N; i += BLOCK) {
+  for (int i = ii; i < iN; i += BLOCK) {
     for (int k = 0; k < N; k += BLOCK) {
       for (int j = 0; j < N; j += BLOCK) {
 
@@ -68,7 +66,6 @@ void matmul()
       }
     }
   }
-
 #elif TALLS
   for (int i = 0; i < N; ++i) {
     for (int j = 0; j < N; j += BLOCK) {
@@ -82,9 +79,26 @@ void matmul()
       _mm256_store_ps(&C[(i*N) + j], c_row);
     }
   }
+#elif BTALLS
+  for (int i = ii; i < iN; i += BLOCK) {
+    for (int j = 0; j < N; j += BLOCK) {
 
+      for (int bi = i; bi < i + BLOCK; ++bi) {
+        for (int bj = j; bj < j + BLOCK; bj += 8) {
+
+          __m256 c_row = {};
+          for (int k = 0; k < N; ++k) {
+            __m256 a = _mm256_broadcast_ss(&A[bi * N + k]);
+            __m256 b = _mm256_load_ps(&B[k * N + bj]);
+            c_row = _mm256_fmadd_ps(a, b, c_row);
+          }
+          _mm256_store_ps(&C[bi * N + bj], c_row);
+        }
+      } 
+    }
+  }
 #else
-  for (int i = 0; i < N; i += BLOCK_X) {
+  for (int i = ii; i < iN; i += BLOCK_X) {
     for (int j = 0; j < N; j += BLOCK*BLOCK_Y) {
 
       __m256 a[BLOCK_X][BLOCK_Y] = {};
@@ -107,9 +121,21 @@ void matmul()
 #endif
 }
 
-#define NTHREADS 8
-void *matmul_threaded(void *n) 
+#define NTHREADS 1
+void *matmul_threaded() 
 {
+  pthread_t threads[NTHREADS];
+
+  int tstep = N/NTHREADS;
+  assert(N % NTHREADS == 0 && "N must be divisible by NTHREADS.");
+  printf("tstep: %d\n", tstep);
+  assert(tstep % BLOCK == 0);
+
+  /* for (int i = 0; i < NTHREADS; i++) { */
+  /*   int threadCreate = pthread_create(&threads[i], NULL, matmul, ((tstep*i), (tstep*(i+1))); */
+  /*   } */
+  /* } */
+  /* matmul(0, N); */
   return NULL;
 }
 
@@ -131,7 +157,11 @@ int main() {
   fclose(fc);
 
   clock_t st = clock();
-  matmul();
+#if NTHREADS == 1
+    matmul(0, N);
+#else
+  matmul_threaded();
+#endif
   clock_t et = clock();
   double dur = (double)(et - st) / CLOCKS_PER_SEC;
 
@@ -142,6 +172,8 @@ int main() {
   printf("(tiled) time: %f\n", dur);
 #elif TALLS
   printf("(tall-skinny) time: %f\n", dur);
+#elif BTALLS
+  printf("(Btall-skinny) time: %f\n", dur);
 #else
   printf("(vfma) time: %f\n", dur);
 #endif
