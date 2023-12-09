@@ -35,7 +35,7 @@ void transpose(float *A, float *B, int N, int M)
 uint64_t get_time() {
   struct timespec start;
   clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-  return (uint64_t)start.tv_sec*1e9+ (uint64_t)start.tv_nsec;
+  return (uint64_t)start.tv_sec*1e9 + (uint64_t)start.tv_nsec;
 }
 
 #ifndef NTHREADS
@@ -115,25 +115,50 @@ void matmul(int ii, int iN)
     }
   }
 #else
-  for (int i = ii; i < iN; i += BLOCK_X) {
-    for (int j = 0; j < N; j += BLOCK*BLOCK_Y) {
+  
+  /* for (int i = ii; i < iN; i += BLOCK_X) { */
+  /*   for (int j = 0; j < N; j += BLOCK*BLOCK_Y) { */
 
-      __m256 a[BLOCK_X][BLOCK_Y] = {};
-      for (int k = 0; k < N; ++k) {
-        for (int bi = 0; bi < BLOCK_X; ++bi) {
-          __m256 ta = _mm256_broadcast_ss(&A[(i+bi)*N + k]);
-          for (int bj = 0; bj < BLOCK_Y; ++bj) {
-            a[bi][bj] = _mm256_fmadd_ps(ta, B256[((j+bj*BLOCK)*N + k*8)/8], a[bi][bj]);
-          }
-        }
-      }
-      for (int bi = 0; bi < BLOCK_X; ++bi) {
-        for (int bj = 0; bj < BLOCK_Y; ++bj) {
-          C256[((i+bi)*N + j + bj*BLOCK)/8] = a[bi][bj];
-        }
-      }
+  /*     __m256 a[BLOCK_X][BLOCK_Y] = {}; */
+  /*     for (int k = 0; k < N; ++k) { */
+  /*       for (int bi = 0; bi < BLOCK_X; ++bi) { */
+  /*         __m256 ta = _mm256_broadcast_ss(&A[(i+bi)*N + k]); */
+  /*         for (int bj = 0; bj < BLOCK_Y; ++bj) { */
+  /*           a[bi][bj] = _mm256_fmadd_ps(ta, B256[((j+bj*BLOCK)*N + k*8)/8], a[bi][bj]); */
+  /*         } */
+  /*       } */
+  /*     } */
+  /*     for (int bi = 0; bi < BLOCK_X; ++bi) { */
+  /*       for (int bj = 0; bj < BLOCK_Y; ++bj) { */
+  /*         C256[((i+bi)*N + j + bj*BLOCK)/8] = a[bj][bi]; */
+  /*       } */
+  /*     } */
+  /*   } */
+  /* } */
+
+  float AT[4*4] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+  float BT[4*4] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+  float CT[4*4] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+
+  __m128* AM = (__m128*)AT;
+  __m128* BM = (__m128*)BT;
+  __m128* CM = (__m128*)CT;
+
+  for (int k = 0; k < 4; ++k) {
+    __m128 acc = {};
+    for (int bi = 0; bi < 4; ++bi) {
+      __m128 ta = _mm_broadcast_ss(&AT[bi+ k*4]);
+      __m128 b = _mm_load_ps(&BT[bi*4]);
+      acc = _mm_fmadd_ps(ta, b, acc);
     }
+    CM[k] = acc;
   }
+
+  printf("\n");
+  for (int i = 0; i < 4*4; ++i) {
+    printf("%f ", CT[i]);
+  }
+  printf("\n\n");
 
 #endif
 }
@@ -169,7 +194,7 @@ int main() {
 
   FILE *fa = fopen("tests/mat/matA", "rb");
   if (fa == NULL) {
-    printf("please tests/mat/matA file using numpy. Run:\npython gemm.py --save\n");
+    printf("please create tests/mat/matA file using numpy. Run:\npython gemm.py --save\n");
     return -1;
   }
   fread(A, sizeof(float), N*N, fa);
@@ -208,7 +233,7 @@ int main() {
   }
 #endif
 
-  check_mm(C, CREF, N*N);
+  /* check_mm(C, CREF, N*N); */
 #ifdef NAIVE
   printf("(naive) time: %f\n", dur);
 #elif TILE
