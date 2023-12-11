@@ -3,7 +3,7 @@ notebooks/.ipynb_checkpoints/rag-chatbot-checkpoint.ipynb
 notebooks/rag-chatbot.ipynb
 
 # Ignore executable
-gemm
+gemm/gemm
 
 # ignore data in tests
 tests/mat/*
