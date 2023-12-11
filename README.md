@@ -3,9 +3,9 @@
 </h1>
 
 
-### Matrix Multiplication
+### Matrix Multiplication (GEMM)
 
-Currently `-DTILE` matmul is fastest.
+Can be found in `gemm`. Currently `-DTILE` matmul is fastest and correct.
 ```sh
 # Performance check (Cache)
 valgrind --tool=cachegrind ./gemm
