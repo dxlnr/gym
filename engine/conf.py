@@ -34,7 +34,8 @@ class Conf:
   warmup_step: int = 100 # 200
   batch_size: int = 2
   layout: str = "NCDHW"
-  input_shape: tuple[int, int, int] = (128, 128, 128)
+  # input_shape: tuple[int, int, int] = (128, 128, 128)
+  input_shape: tuple[int, int, int] = (16, 16, 16)
   val_input_shape: tuple[int, int, int] = (128, 128, 128)
   seed: int = 0
   num_workers: int = 8
