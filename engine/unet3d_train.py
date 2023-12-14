@@ -1,8 +1,10 @@
 """Train a unet3D"""
+from pathlib import Path
 import os
+import sys; sys.path.append(str(Path(__file__).resolve().parent.parent))
 import time
-import wandb
-from dataloader import get_batch_loader
+from engine.dataloader import get_batch_load
+from engine.conf import Conf
 from examples.mlperf.metrics import dice_ce_loss
 from extra.lr_scheduler import MultiStepLR
 from extra.models.unet3d import UNet3D
@@ -16,12 +18,11 @@ from tqdm import trange
 
 
 def train_unet3d():
-  from examples.mlperf.conf import Conf
   conf = Conf()
   GPUS = getenv("GPUS", 1)
   # steps = len(get_train_files())//(BS*GPUS)
   steps = 168//(conf.batch_size*GPUS)
-  if getenv("WANDB"): wandb.init(project="tinygrad-unet3d")
+  if getenv("WANDB"): import wandb; wandb.init(project="tinygrad-unet3d")
 
   def data_get(iterator, rank=0):
     device = f"gpu:{rank}"
@@ -54,7 +55,7 @@ def train_unet3d():
       self.optim.step()
       if self.conf.lr_decay_epochs: self.lr_schedule.step()
 
-  trainers = [Trainer(rank) for rank in range(GPUS)]
+  trainers = [Trainer(conf, rank) for rank in range(GPUS)]
   @TinyJit
   def train(*tensors):
     outs = [trainers[i](x,y) for i,(x,y) in enumerate(zip(tensors[::2], tensors[1::2]))]
@@ -68,7 +69,7 @@ def train_unet3d():
 
   for epoch in range(conf.epochs):
     if epoch % conf.save_every_epoch == 0: safe_save(get_state_dict(trainers[0].mdl), f"/tmp/unet3d-ckpt-{epoch}.safetensors")
-    tl = get_batch_loader(conf.batch_size, conf.input_shape, conf.oversampling)
+    tl = get_batch_load(conf.batch_size, conf.input_shape, conf.oversampling)
     proc = [data_get(tl, rank) for rank in range(GPUS)]
     for _ in (t:=trange(steps)):
       GlobalCounters.reset()
@@ -79,3 +80,6 @@ def train_unet3d():
       et = (time.perf_counter()-st)*1000
       t.set_description(f"loss: {loss:.2f}% step: {et:.2f} ms, {GlobalCounters.global_ops*1e-9/et:.2f} GFLOPS")
       if getenv("WANDB"): wandb.log({"loss": loss, "step_time_ms": et})
+
+if __name__ == "__main__":
+    train_unet3d()

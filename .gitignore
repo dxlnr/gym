@@ -1,3 +1,5 @@
+__pycache__/
+
 notebooks/.env
 notebooks/.ipynb_checkpoints/rag-chatbot-checkpoint.ipynb
 notebooks/rag-chatbot.ipynb
@@ -10,3 +12,6 @@ tests/mat/*
 
 #
 cachegrind*
+
+# datasets
+data/kits19/*
