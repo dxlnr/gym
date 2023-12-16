@@ -12,10 +12,13 @@ def get_batch_load(batch_size=2, val=False, shuffle=True, patch_size=(128,128,12
   tx,ty,_,_ = get_data_split(path="/home/daniel/code/datasets/kits19/processed")
 
   sz = (len(tx),1,*patch_size)
-  shmX = shared_memory.SharedMemory(name="kits19_X", create=True, size=prod(sz))
-  shmY = shared_memory.SharedMemory(name="kits19_Y", create=True, size=prod(sz))
-  X = Tensor.empty(*sz, dtype=dtypes.float, device=f"disk:/dev/shm/kits19_X")
-  Y = Tensor.empty(*sz, dtype=dtypes.uint8, device=f"disk:/dev/shm/kits19_Y")
+  try:
+    shmX,shmY = shared_memory.SharedMemory(name="kits19_X"),shared_memory.SharedMemory(name="kits19_Y")
+  except FileNotFoundError:
+    shmX,shmY = shared_memory.SharedMemory(name="kits19_X", create=True, size=prod(sz)), shared_memory.SharedMemory(name="kits19_Y", create=True, size=prod(sz))
+
+  X = Tensor.empty(*sz, dtype=dtypes.float, device="disk:/dev/shm/kits19_X")
+  Y = Tensor.empty(*sz, dtype=dtypes.uint8, device="disk:/dev/shm/kits19_Y")
 
   q_in, q_out = Queue(), Queue()
 

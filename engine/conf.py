@@ -53,7 +53,7 @@ class Conf:
   weight_decay: float = 0.0
   eval_every: int = 20 # 20
   start_eval_at: int = 20 # 20
-  save_every_epoch: int = 10
+  save_every_epoch: int = 1
   verbose: bool = True
   normalization: str = "instancenorm"
   activation: str = "relu"
