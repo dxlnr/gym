@@ -35,6 +35,7 @@ def get_val_files():
   data = fetch("https://raw.githubusercontent.com/mlcommons/training/master/image_segmentation/pytorch/evaluation_cases.txt").read_text()
   return sorted([x for x in BASEDIR.iterdir() if x.stem.split("_")[-1] in data.split("\n")])
 
+@functools.lru_cache(None)
 def get_data_split(path: str="extra/datasets/kits19/processed", num_shards: int=0, shard_id: int=0):
   def load_data(path, files_pattern):
     data = sorted(glob.glob(os.path.join(path, files_pattern)))
@@ -222,19 +223,15 @@ def _rand_foreg_cropd(image, label, patch_size):
   return image, label, [low_x, high_x, low_y, high_y, low_z, high_z]
 
 def rand_crop(image, label, patch_size, oversampling):
-  if random.random() < oversampling:
-    image, label, cords = _rand_foreg_cropd(image, label, patch_size)
-  else:
-    image, label, cords = _rand_crop(image, label, patch_size)
+  if random.random() < oversampling: image, label, cords = _rand_foreg_cropd(image, label, patch_size)
+  else: image, label, cords = _rand_crop(image, label, patch_size)
   return image, label
 
 def rand_flip(image, label, axis=[1,2,3]):
   prob = 1/len(axis)
-  def _flip(image, label, axis):
-    return np.flip(image, axis=axis).copy(), np.flip(label, axis=axis).copy()
+  def _flip(image, label, axis): return np.flip(image, axis=axis).copy(), np.flip(label, axis=axis).copy()
   for ax in axis:
-    if random.random() < prob:
-      image, label = _flip(image, label, ax)
+    if random.random() < prob: image, label = _flip(image, label, ax)
   return image, label
 
 def cast(image, label, types=(np.float32, np.uint8)):
@@ -266,7 +263,9 @@ def get_batch(lX, lY, batch_size=32, patch_size=(128, 128, 128), oversampling=0.
   for idxs in zip(*[iter(order)]* batch_size):
     bX, bY = [], []
     for i in idxs:
+      # print(lX[i], lY[i])
       X, Y = np.load(lX[i]), np.load(lY[i])
+      # print(X.shape, Y.shape)
       if augment:
         X,Y = transform(X,Y, patch_size, oversampling)
       bX.append(X)

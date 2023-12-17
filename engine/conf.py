@@ -27,7 +27,7 @@ class Conf:
   load_ckpt_path: str = ""
   val_split: float = 0.1
 
-  start_epoch: int = 0
+  start_epoch: int = 3
   epochs: int = 200
   quality_threshold: float = 0.908
   ga_steps: int = 1
@@ -35,8 +35,9 @@ class Conf:
   batch_size: int = 2
   layout: str = "NCDHW"
   # input_shape: tuple[int, int, int] = (128, 128, 128)
-  input_shape: tuple[int, int, int] = (32, 32, 32)
-  val_input_shape: tuple[int, int, int] = (128, 128, 128)
+  # val_input_shape: tuple[int, int, int] = (128, 128, 128)
+  input_shape: tuple[int, int, int] = (64,64,64)
+  val_input_shape: tuple[int, int, int] = (64,64,64)
   seed: int = 0
   num_workers: int = 8
   exec_mode: str = "train"
@@ -44,16 +45,16 @@ class Conf:
   benchmark: bool = False
   amp: bool = False
   optimizer: str = "sgd"
-  lr: float = 0.8 # 1e-3
+  lr: float = 0.001 # 1e-3
   init_lr: float = 1e-4
   lr_warmup_epochs: int = 1 # 200
   lr_decay_epochs: int = field(default_factory=lambda: [200])
   lr_decay_factor: float = 0.1
   momentum: float = 0.9
   weight_decay: float = 0.0
-  eval_every: int = 20 # 20
+  eval_every: int = 1 # 20
   start_eval_at: int = 20 # 20
-  save_every_epoch: int = 1
+  save_every_epoch: int = 10
   verbose: bool = True
   normalization: str = "instancenorm"
   activation: str = "relu"
