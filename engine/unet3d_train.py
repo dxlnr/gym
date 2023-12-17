@@ -8,24 +8,24 @@ from engine.conf import Conf
 from examples.mlperf.metrics import dice_ce_loss, get_dice_score_np
 from extra.lr_scheduler import MultiStepLR
 from extra.models.unet3d import UNet3D
-from data.kits19 import sliding_window_inference
+from data.kits19 import get_batch, get_data_split, sliding_window_inference
 from tinygrad.helpers import GlobalCounters, getenv
 from tinygrad.device import Device
 from tinygrad.jit import TinyJit
 from tinygrad.nn.optim import SGD
 from tinygrad.nn.state import (get_state_dict, load_state_dict, safe_load,
                                safe_save)
-from tinygrad.tensor import Tensor
+from tinygrad.tensor import Tensor, dtypes
 from tqdm import tqdm, trange
 
 
 def train_unet3d():
   conf = Conf()
   GPUS = getenv("GPUS", 0)
-  # steps = len(get_train_files())//(BS*GPUS)
-  # steps = 168//(conf.batch_size*GPUS)
-  # steps = 168//(conf.batch_size)
-  steps = 2
+  ftx,fty,fvx,fvy = get_data_split(path="/home/daniel/code/datasets/kits19/processed")
+  # steps = len(ftx)//(conf.batch_size*GPUS)
+  steps = len(ftx)//(conf.batch_size)
+  # steps = 1
   if getenv("WANDB"): import wandb; wandb.init(project="tinygrad-unet3d")
 
   def get_data(iterator, rank=0):
@@ -65,8 +65,7 @@ def train_unet3d():
         GlobalCounters.reset()
         st = time.perf_counter()
         try:
-          x,y = next(tl)
-          x,y = x.to(Device.DEFAULT).realize(), y.to(Device.DEFAULT).realize()
+          x,y = next(loader)
           out, label = sliding_window_inference(self.mdl,x,y)
           s += score_fn(out, label.squeeze(axis=1)).mean(axis=0)
           del out, label
@@ -86,22 +85,25 @@ def train_unet3d():
     return outs
 
   def eval(vt, epoch, rank=0):
-    if rank == 0: m=trainers[0].eval(vt, epoch=epoch)
+    if rank == 0: m=trainers[0].eval(vt, epoch=epoch, steps=2)
     elif rank == 2: raise NotImplementedError("write real allreduce")
     elif GPUS > 2: raise NotImplementedError("write real allreduce")
     Tensor.training = True
     return m
 
+  is_successful, diverged = False, False
+  vl = get_batch(fvx,fvy,batch_size=1, patch_size=conf.val_input_shape, shuffle=False, augment=True)
   for epoch in range(conf.start_epoch, conf.epochs):
     if epoch % conf.save_every_epoch == 0: safe_save(get_state_dict(trainers[0].mdl), f"/tmp/unet3d-ckpt-{epoch}.safetensors")
-    tl = get_batch_load(batch_size=conf.batch_size, patch_size=conf.input_shape, oversampling=conf.oversampling)
+    tl = get_batch(ftx,fty,batch_size=conf.batch_size, patch_size=conf.input_shape, shuffle=True, augment=True)
+    # tl = get_batch_load(batch_size=conf.batch_size, patch_size=conf.input_shape, oversampling=conf.oversampling)
     cl = 0
     for i, _ in enumerate(t:=trange(steps)):
       GlobalCounters.reset()
       st = time.perf_counter()
       try:
         x,y = next(tl)
-        x,y = x.to(Device.DEFAULT).realize(), y.to(Device.DEFAULT).realize()
+        x,y = Tensor(x,dtype=dtypes.float).to(Device.DEFAULT).realize(), Tensor(y,dtype=dtypes.uint8).to(Device.DEFAULT).realize()
         outs = train(x,y)
         cl += sum([loss.item() for loss in outs])/len(outs)
         et = (time.perf_counter()-st)*1000
@@ -109,10 +111,10 @@ def train_unet3d():
         if getenv("WANDB"): wandb.log({"loss": (cl/(i+1)), "step_time_ms": et})
         del x, y
       except StopIteration: break
+    del tl
 
     if epoch % conf.eval_every == 0:
-      vt = get_batch_load(batch_size=conf.batch_size, val=True, shuffle=False, augment=False, patch_size=conf.val_input_shape)
-      eval_metrics = eval(vt, epoch=epoch)
+      eval_metrics = eval(vl, epoch=epoch)
       if eval_metrics["mean_dice"] >= conf.quality_threshold:
         print("\nsuccess", eval_metrics["mean_dice"], ">", conf.quality_threshold)
         is_successful = True

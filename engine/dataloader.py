@@ -65,6 +65,15 @@ def get_batch_load(batch_size=2, val=False, shuffle=True, patch_size=(128,128,12
   shmX.close(); shmY.close()
   shmX.unlink(); shmY.unlink()
 
+def dist_batch(fx, yx, batch_size=2, patch_size=(128,128,128), shuffle=True, augment=True, oversampling=0.4, nw=4):
+  q_in, q_out = Queue(), Queue()
+  procs = []
+  for _ in range(nw):
+    p = Process(target=get_batch, args=(q_in, q_out, fx, fy))
+    p.daemon = True
+    p.start()
+    procs.append(p)
+
 if __name__ == "__main__":
   THREADS = 4
   BS = 2

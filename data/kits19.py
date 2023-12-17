@@ -140,7 +140,8 @@ def pad_input(volume, roi_shape, strides, padding_mode="constant", padding_val=-
 
 def sliding_window_inference(model, inputs, labels, roi_shape=(128, 128, 128), overlap=0.5):
   from tinygrad.jit import TinyJit
-  mdl_run = TinyJit(lambda x: model(x).realize())
+  # mdl_run = TinyJit(lambda x: model(x).realize())
+  mdl_run = model
   image_shape, dim = list(inputs.shape[2:]), len(inputs.shape[2:])
   strides = [int(roi_shape[i] * (1 - overlap)) for i in range(dim)]
   bounds = [image_shape[i] % strides[i] for i in range(dim)]
@@ -263,13 +264,11 @@ def get_batch(lX, lY, batch_size=32, patch_size=(128, 128, 128), oversampling=0.
   for idxs in zip(*[iter(order)]* batch_size):
     bX, bY = [], []
     for i in idxs:
-      # print(lX[i], lY[i])
+      print(lX[i], lY[i])
       X, Y = np.load(lX[i]), np.load(lY[i])
-      # print(X.shape, Y.shape)
-      if augment:
-        X,Y = transform(X,Y, patch_size, oversampling)
-      bX.append(X)
-      bY.append(Y)
+      if augment: X,Y = transform(X,Y, patch_size, oversampling)
+      print(X.shape, Y.shape)
+      bX.append(X), bY.append(Y)
     yield (np.stack(bX, axis=0), np.stack(bY, axis=0))
 
 if __name__ == "__main__":

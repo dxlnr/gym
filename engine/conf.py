@@ -37,7 +37,7 @@ class Conf:
   # input_shape: tuple[int, int, int] = (128, 128, 128)
   # val_input_shape: tuple[int, int, int] = (128, 128, 128)
   input_shape: tuple[int, int, int] = (64,64,64)
-  val_input_shape: tuple[int, int, int] = (64,64,64)
+  val_input_shape: tuple[int, int, int] = (32,32,32)
   seed: int = 0
   num_workers: int = 8
   exec_mode: str = "train"
