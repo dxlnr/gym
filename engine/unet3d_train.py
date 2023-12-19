@@ -25,7 +25,6 @@ def train_unet3d():
   ftx,fty,fvx,fvy = get_data_split(path="/home/daniel/code/datasets/kits19/processed")
   # steps = len(ftx)//(conf.batch_size*GPUS)
   steps = len(ftx)//(conf.batch_size)
-  # steps = 1
   if getenv("WANDB"): import wandb; wandb.init(project="tinygrad-unet3d")
 
   def get_data(iterator, rank=0):
@@ -70,7 +69,7 @@ def train_unet3d():
           s += score_fn(out, label.squeeze(axis=1)).mean(axis=0)
           del out, label
           et = (time.perf_counter()-st)*1000
-          t.set_description(f"loss: {(cl/(i+1)):.2f}% step: {et:.2f} ms, {GlobalCounters.global_ops*1e-9/et:.2f} GFLOPS")
+          t.set_description(f"loss: {(cl/(i+1)):.2f}% step, dice {(s/(i+1)):.2f}: {et:.2f} ms, {GlobalCounters.global_ops*1e-9/et:.2f} GFLOPS")
           if getenv("WANDB"): wandb.log({"loss": (cl/(i+1)), "step_time_ms": et})
         except StopIteration: break
       return {"epoch": epoch, "mean_dice": s/(i+1)}
@@ -85,7 +84,7 @@ def train_unet3d():
     return outs
 
   def eval(vt, epoch, rank=0):
-    if rank == 0: m=trainers[0].eval(vt, epoch=epoch, steps=2)
+    if rank == 0: m=trainers[0].eval(vt, epoch=epoch, steps=len(fvx)//conf.batch_size)
     elif rank == 2: raise NotImplementedError("write real allreduce")
     elif GPUS > 2: raise NotImplementedError("write real allreduce")
     Tensor.training = True
@@ -93,7 +92,7 @@ def train_unet3d():
 
   is_successful, diverged = False, False
   vl = get_batch(fvx,fvy,batch_size=1, patch_size=conf.val_input_shape, shuffle=False, augment=True)
-  for epoch in range(conf.start_epoch, conf.epochs):
+  for epoch in range(conf.start_epoch+1, conf.epochs):
     if epoch % conf.save_every_epoch == 0: safe_save(get_state_dict(trainers[0].mdl), f"/tmp/unet3d-ckpt-{epoch}.safetensors")
     tl = get_batch(ftx,fty,batch_size=conf.batch_size, patch_size=conf.input_shape, shuffle=True, augment=True)
     # tl = get_batch_load(batch_size=conf.batch_size, patch_size=conf.input_shape, oversampling=conf.oversampling)
@@ -107,7 +106,7 @@ def train_unet3d():
         outs = train(x,y)
         cl += sum([loss.item() for loss in outs])/len(outs)
         et = (time.perf_counter()-st)*1000
-        t.set_description(f"loss: {(cl/(i+1)):.2f}% step: {et:.2f} ms, {GlobalCounters.global_ops*1e-9/et:.2f} GFLOPS")
+        t.set_description(f"epoch: {epoch+1} loss: {(cl/(i+1)):.2f}% step: {et:.2f} ms, {GlobalCounters.global_ops*1e-9/et:.2f} GFLOPS")
         if getenv("WANDB"): wandb.log({"loss": (cl/(i+1)), "step_time_ms": et})
         del x, y
       except StopIteration: break
@@ -124,4 +123,13 @@ def train_unet3d():
     if is_successful or diverged: break
 
 if __name__ == "__main__":
-  train_unet3d()
+  if not getenv("DIST"):
+    train_unet3d()
+  else:
+    if getenv("CUDA"):
+      pass
+    else:
+      from tinygrad.runtime.ops_gpu import CL
+      devices = [f"gpu:{i}" for i in range(len(CL.devices))]
+    world_size = len(devices)
+

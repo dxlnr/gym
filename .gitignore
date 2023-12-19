@@ -15,3 +15,4 @@ cachegrind*
 
 # datasets
 data/kits19/*
+data/imagenet/*
