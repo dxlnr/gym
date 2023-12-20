@@ -63,6 +63,10 @@ class MixerModel:
     # if self.fused_add_norm:
     #   if layer_norm_fn is None or rms_norm_fn is None: raise ImportError("Failed to import Triton LayerNorm / RMSNorm kernels")
 
+    # self.layers = [create_block(d_model,ssm_cfg=ssm_cfg,norm_epsilon=norm_epsilon,rms_norm=rms_norm,residual_in_fp32=residual_in_fp32,fused_add_norm=fused_add_norm,layer_idx=i) for i in range(n_layer)]
+
+
+
 class MambaLMHeadModel:
   def __init__(self, config=MambaConfig(), initializer_cfg=None):
     self.config = config
@@ -90,12 +94,14 @@ class MambaLMHeadModel:
 
   def load_from_pretrained(self):
     fn = Path(__file__).parents[1] / "weights"
-    if self.config.d_model == 2560 and self.config.n_layer == 64: fn / "mamba-130m.ckpt"
-    elif self.config.d_model == 2048 and self.config.n_layer == 48: fn / "mamba-370m.ckpt"
-    elif self.config.d_model == 1536 and self.config.n_layer == 48: fn / "mamba-790m.ckpt"
-    elif self.config.d_model == 1024 and self.config.n_layer == 48: fn / "mamba-2.8b.ckpt"
-    elif self.config.d_model == 768 and self.config.n_layer == 24: fn / "mamba-2.8b.ckpt"
+    if self.config.d_model == 2560 and self.config.n_layer == 64: mn="mamba-2.8b.ckpt"
+    elif self.config.d_model == 2048 and self.config.n_layer == 48: mn="mamba-1.4b.ckpt"
+    elif self.config.d_model == 1536 and self.config.n_layer == 48: mn="mamba-790m.ckpt"
+    elif self.config.d_model == 1024 and self.config.n_layer == 48: mn="mamba-370m.ckpt"
+    elif self.config.d_model == 768 and self.config.n_layer == 24: mn="mamba-130m.ckpt"
     else: raise ValueError(f"Unsupported pretrained configuration: {self.config.d_model} {self.config.n_layer}")
+    fn = fn / mn
+    fetch(f"https://huggingface.co/state-spaces/{mn.replace('.ckpt','')}/resolve/main/pytorch_model.bin?download=true", fn)
     test = torch.load(fn, map_location=torch.device("cpu"))
     for k, v in test.items():
         print(k, v.shape)
@@ -106,5 +112,4 @@ class MambaLMHeadModel:
 if __name__ == "__main__":
   BATCH, LENGTH, DIM = 2, 64, 16
   m = MambaLMHeadModel()
-  m.load_from_pretrained(weight_path=Path(__file__).parents[1] / "weights" / "pytorch_model.bin")
-  # print(m.conv1.weight)
+  m.load_from_pretrained()
