@@ -22,6 +22,7 @@ def model_resnet():
 
 def model_mamba():
     mdl = MambaLMHeadModel()
+    mdl.load_from_pretrained()
     layers(mdl)
 
 

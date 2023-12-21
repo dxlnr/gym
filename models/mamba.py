@@ -1,4 +1,5 @@
 """Mamba: Linear-Time Sequence Modeling with Selective State Spaces."""
+from typing import Optional
 from pathlib import Path
 import math
 from functools import partial
@@ -6,7 +7,7 @@ import torch
 from dataclasses import dataclass, field
 from tinygrad import nn
 from tinygrad.tensor import Tensor
-from tinygrad.helpers import fetch, get_child
+from tinygrad.helpers import dtypes, fetch, get_child
 
 @dataclass
 class MambaConfig:
@@ -26,45 +27,44 @@ class Mamba:
     self.activation = "silu"
 
     self.in_proj = nn.Linear(d_model,self.d_inner*2,bias=bias)
-    self.conv1 = nn.Conv1d(self.d_inner,self.d_inner,bias=conv_bias,kernel_size=d_conv,groups=self.d_inner,padding=d_conv-1)
+    self.conv1d = nn.Conv1d(self.d_inner,self.d_inner,bias=conv_bias,kernel_size=d_conv,groups=self.d_inner,padding=d_conv-1)
     self.x_proj = nn.Linear(self.d_inner,self.dt_rank+d_state*2, bias=False)
     self.dt_proj = nn.Linear(self.dt_rank,self.d_inner,bias=True)
+
+    A = Tensor.arange(1, d_state+1, dtype=dtypes.float).repeat((self.d_inner,1)).contiguous()
+    self.A_log = A.log()
+    self.D = Tensor.ones(self.d_inner)
+
     self.out_proj = nn.Linear(self.d_inner,d_model,bias=bias)
 
   def __call__(self, x):
     pass
 
-# class Block:
-#   def __init__(self, dim, mixer_cls, norm_cls=nn.LayerNorm, fused_add_norm=False, residual_in_fp32=False):
-#     self.residual_in_fp32 = residual_in_fp32
-#     self.fused_add_norm = fused_add_norm
-#     self.mixer = mixer_cls(dim)
-#     self.norm = norm_cls(dim)
-#     if self.fused_add_norm:
-#       assert RMSNorm is not None, "RMSNorm import fails"
-#       assert isinstance(self.norm, (nn.LayerNorm, RMSNorm)), "Only LayerNorm and RMSNorm are supported for fused_add_norm"
+class Block:
+  def __init__(self, dim, mixer_cls, norm_cls=nn.LayerNorm, fused_add_norm=False, residual_in_fp32=False):
+    self.residual_in_fp32 = residual_in_fp32
+    self.fused_add_norm = fused_add_norm
+    self.mixer = mixer_cls(dim)
+    self.norm = norm_cls(dim)
 
-#   def __call__(self, hidden_states: Tensor, residual: Optional[Tensor] = None, inference_params=None):
-#     pass
+  def __call__(self, hidden_states: Tensor, residual: Optional[Tensor] = None, inference_params=None):
+    pass
 
-# def create_block(d_model,ssm_cfg=None,norm_epsilon=1e-5,rms_norm=False,residual_in_fp32=False,fused_add_norm=False,layer_idx=None):
-#   if ssm_cfg is None: ssm_cfg = {}
-#   mixer_cls = partial(Mamba, layer_idx=layer_idx, **ssm_cfg)
-#   norm_cls = partial(nn.LayerNorm if not rms_norm else RMSNorm, eps=norm_epsilon)
-#   block = Block(d_model,mixer_cls,norm_cls=norm_cls,fused_add_norm=fused_add_norm,residual_in_fp32=residual_in_fp32)
-#   block.layer_idx = layer_idx
-#   return block
+def create_block(d_model,ssm_cfg=None,norm_epsilon=1e-5,rms_norm=False,residual_in_fp32=False,fused_add_norm=False,layer_idx=None):
+  if ssm_cfg is None: ssm_cfg = {}
+  mixer_cls = partial(Mamba, layer_idx=layer_idx, **ssm_cfg)
+  # norm_cls = partial(nn.LayerNorm if not rms_norm else RMSNorm, eps=norm_epsilon)
+  norm_cls = partial(nn.LayerNorm, eps=norm_epsilon)
+  block = Block(d_model,mixer_cls,norm_cls=norm_cls,fused_add_norm=fused_add_norm,residual_in_fp32=residual_in_fp32)
+  block.layer_idx = layer_idx
+  return block
 
 class MixerModel:
   def __init__(self,d_model:int,n_layer:int,vocab_size:int,ssm_cfg=None,norm_epsilon=1e-5,rms_norm=False,initializer_cfg=None,fused_add_norm=False,residual_in_fp32=False) -> None:
     self.residual_in_fp32 = residual_in_fp32
     self.embedding = nn.Embedding(vocab_size, d_model)
-    # self.fused_add_norm = fused_add_norm
-    # if self.fused_add_norm:
-    #   if layer_norm_fn is None or rms_norm_fn is None: raise ImportError("Failed to import Triton LayerNorm / RMSNorm kernels")
-
-    # self.layers = [create_block(d_model,ssm_cfg=ssm_cfg,norm_epsilon=norm_epsilon,rms_norm=rms_norm,residual_in_fp32=residual_in_fp32,fused_add_norm=fused_add_norm,layer_idx=i) for i in range(n_layer)]
-
+    self.layers = [create_block(d_model,ssm_cfg=ssm_cfg,norm_epsilon=norm_epsilon,rms_norm=rms_norm,residual_in_fp32=residual_in_fp32,fused_add_norm=fused_add_norm,layer_idx=i) for i in range(n_layer)]
+    self.norm_f = (nn.LayerNorm)(d_model, eps=norm_epsilon)
 
 
 class MambaLMHeadModel:
@@ -99,15 +99,14 @@ class MambaLMHeadModel:
     elif self.config.d_model == 1536 and self.config.n_layer == 48: mn="mamba-790m.ckpt"
     elif self.config.d_model == 1024 and self.config.n_layer == 48: mn="mamba-370m.ckpt"
     elif self.config.d_model == 768 and self.config.n_layer == 24: mn="mamba-130m.ckpt"
-    else: raise ValueError(f"Unsupported pretrained configuration: {self.config.d_model} {self.config.n_layer}")
+    else: raise ValueError(f"Unsupported pretrained config: dim {self.config.d_model}, layers {self.config.n_layer}")
     fn = fn / mn
     fetch(f"https://huggingface.co/state-spaces/{mn.replace('.ckpt','')}/resolve/main/pytorch_model.bin?download=true", fn)
     test = torch.load(fn, map_location=torch.device("cpu"))
     for k, v in test.items():
-        print(k, v.shape)
-    #   obj = get_child(self, k)
-    #   assert obj.shape == v.shape, (k, obj.shape, v.shape)
-    #   obj.assign(v.numpy())
+      obj = get_child(self, k)
+      assert obj.shape == v.shape, (k, obj.shape, v.shape)
+      obj.assign(v.numpy())
 
 if __name__ == "__main__":
   BATCH, LENGTH, DIM = 2, 64, 16
