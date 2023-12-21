@@ -9,6 +9,8 @@ from tinygrad import nn
 from tinygrad.tensor import Tensor
 from tinygrad.helpers import dtypes, fetch, get_child
 
+causal_conv1d_fn, causal_conv1d_update = None, None
+
 @dataclass
 class MambaConfig:
   d_model: int = 768
@@ -20,8 +22,22 @@ class MambaConfig:
   fused_add_norm: bool = True
   pad_vocab_size_multiple: int = 8
 
+
+class SelectiveScanFn:
+  def __call___(self, u, delta, A, B, C, D=None, z=None, delta_bias=None, delta_softplus=False, return_last_state=False):
+    pass
+
+  @staticmethod
+  def backward(ctx, dout, *args):
+    pass
+
+def selective_scan_fn(u, delta, A, B, C, D=None, z=None, delta_bias=None, delta_softplus=False,return_last_state=False):
+  return SelectiveScanFn(u, delta, A, B, C, D, z, delta_bias, delta_softplus, return_last_state)
+
+
 class Mamba:
   def __init__(self,d_model=16,d_state=16,d_conv=4,expand=2,dt_rank="auto",dt_min=0.001,dt_max=0.1,dt_init="random",dt_scale=1.0,dt_init_floor=1e-4,conv_bias=True,bias=False,use_fast_path=True,layer_idx=None,device=None,dtype=None):
+    self.d_state = d_state
     self.d_inner = int(expand*d_model)
     self.dt_rank = math.ceil(d_model/16) if dt_rank == "auto" else dt_rank
     self.activation = "silu"
@@ -37,7 +53,69 @@ class Mamba:
 
     self.out_proj = nn.Linear(self.d_inner,d_model,bias=bias)
 
-  def __call__(self, x):
+  def __call__(self, x, inference_params=None):
+    batch, seqlen, dim = x.shape
+    conv_state, ssm_state = None, None
+    if inference_params is not None:
+      conv_state, ssm_state = self._get_states_from_cache(inference_params, batch)
+      if inference_params.seqlen_offset > 0:
+        out, _, _ = self.step(x, conv_state, ssm_state)
+        return out
+
+    xz = (self.in_proj @ x.reshape((dim,batch*seqlen))).reshape((batch,dim,seqlen))
+    # We do matmul and transpose BLH -> HBL at the same time
+    # xz = rearrange(
+    #         self.in_proj.weight @ rearrange(hidden_states, "b l d -> d (b l)"),
+    #         "d (b l) -> b d l",
+    #         l=seqlen,
+    #     )
+    # if self.in_proj.bias is not None: xz = xz + rearrange(self.in_proj.bias.to(dtype=xz.dtype), "d -> d 1")
+    if self.in_proj.bias is not None: xz = xz + self.in_proj.bias.to(dtype=xz.dtype).reshape((dim,1))
+
+    # A = -torch.exp(self.A_log.float())  # (d_inner, d_state)
+    A = -self.A_log.exp()  # (d_inner, d_state)
+        # In the backward pass we write dx and dz next to each other to avoid torch.cat
+    if self.use_fast_path and inference_params is None:  # Doesn't support outputting the states
+      out = mamba_inner_fn(xz,self.conv1d.weight,self.conv1d.bias,self.x_proj.weight,self.dt_proj.weight,self.out_proj.weight,self.out_proj.bias,A,None,None,self.D,delta_bias=self.dt_proj.bias,delta_softplus=True)
+    else:
+      x, z = xz.chunk(2, dim=1)
+      # Compute short convolution
+      if conv_state is not None:
+        # If we just take x[:, :, -self.d_conv :], it will error if seqlen < self.d_conv
+        # Instead F.pad will pad with zeros if seqlen < self.d_conv, and truncate otherwise.
+        # conv_state.copy_(F.pad(x, (self.d_conv - x.shape[-1], 0)))  # Update state (B D W)
+        conv_state.copy_(x.pad((self.d_conv - x.shape[-1], 0)))  # Update state (B D W)
+        if causal_conv1d_fn is None:
+          x = self.act(self.conv1d(x)[..., :seqlen])
+        else:
+          assert self.activation in ["silu", "swish"]
+          # x = causal_conv1d_fn(x=x,weight=rearrange(self.conv1d.weight, "d 1 w -> d w"),bias=self.conv1d.bias,activation=self.activation)
+          x = causal_conv1d_fn(x=x,weight=self.conv1d.weight.squeeze(),bias=self.conv1d.bias,activation=self.activation)
+
+          # We're careful here about the layout, to avoid extra transposes.
+          # We want dt to have d as the slowest moving dimension
+          # and L as the fastest moving dimension, since those are what the ssm_scan kernel expects.
+          # x_dbl = self.x_proj(rearrange(x, "b d l -> (b l) d"))  # (bl d)
+
+          x_dbl = self.x_proj(x.reshape((batch*seqlen, dim)))  # (bl d)
+          dt, B, C = torch.split(x_dbl, [self.dt_rank, self.d_state, self.d_state], dim=-1)
+          dt = self.dt_proj.weight @ dt.t()
+          # dt = rearrange(dt, "d (b l) -> b d l", l=seqlen)
+          # B = rearrange(B, "(b l) dstate -> b dstate l", l=seqlen).contiguous()
+          # C = rearrange(C, "(b l) dstate -> b dstate l", l=seqlen).contiguous()
+          dt = dt.reshape((batch,dim,seqlen))
+          B = B.reshape((batch,self.d_state,seqlen)).contiguous()
+          C = C.reshape((batch,self.d_state,seqlen)).contiguous()
+          assert self.activation in ["silu", "swish"]
+          y = selective_scan_fn(x,dt,A,B,C,self.D.float(),z=z,delta_bias=self.dt_proj.bias.float(),delta_softplus=True,return_last_state=ssm_state is not None)
+          if ssm_state is not None:
+            y, last_state = y
+            ssm_state.copy_(last_state)
+          y = y.reshape((batch,seqlen,dim))
+          out = self.out_proj(y)
+      return out
+
+  def step(self):
     pass
 
 class Block:
