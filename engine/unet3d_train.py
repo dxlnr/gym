@@ -9,7 +9,8 @@ from engine.loss import dice_ce_loss, get_dice_score_np
 from extra.lr_scheduler import MultiStepLR
 from extra.models.unet3d import UNet3D
 from data.kits19 import get_batch, get_data_split, sliding_window_inference
-from tinygrad.helpers import GlobalCounters, getenv
+from tinygrad.helpers import getenv
+from tinygrad.ops import GlobalCounters
 from tinygrad.device import Device
 from tinygrad.jit import TinyJit
 from tinygrad.nn.optim import SGD
@@ -22,7 +23,7 @@ from tqdm import tqdm, trange
 def train_unet3d():
   conf = Conf()
   GPUS = getenv("GPUS", 0)
-  ftx,fty,fvx,fvy = get_data_split(path="/home/daniel/code/datasets/kits19/processed")
+  ftx,fty,fvx,fvy = get_data_split(path="/home/dan/code/datasets/kits19/processed")
   # steps = len(ftx)//(conf.batch_size*GPUS)
   steps = len(ftx)//(conf.batch_size)
   if getenv("WANDB"): import wandb; wandb.init(project="tinygrad-unet3d")
@@ -91,7 +92,6 @@ def train_unet3d():
     return m
 
   is_successful, diverged = False, False
-  vl = get_batch(fvx,fvy,batch_size=1, patch_size=conf.val_input_shape, shuffle=False, augment=True)
   for epoch in range(conf.start_epoch+1, conf.epochs):
     if epoch % conf.save_every_epoch == 0: safe_save(get_state_dict(trainers[0].mdl), f"/tmp/unet3d-ckpt-{epoch}.safetensors")
     tl = get_batch(ftx,fty,batch_size=conf.batch_size, patch_size=conf.input_shape, shuffle=True, augment=True)
@@ -106,13 +106,14 @@ def train_unet3d():
         outs = train(x,y)
         cl += sum([loss.item() for loss in outs])/len(outs)
         et = (time.perf_counter()-st)*1000
-        t.set_description(f"epoch: {epoch+1} loss: {(cl/(i+1)):.2f}% step: {et:.2f} ms, {GlobalCounters.global_ops*1e-9/et:.2f} GFLOPS")
+        t.set_description(f"epoch: {epoch} loss: {(cl/(i+1)):.2f}% step: {et:.2f} ms, {GlobalCounters.global_ops*1e-9/et:.2f} GFLOPS")
         if getenv("WANDB"): wandb.log({"loss": (cl/(i+1)), "step_time_ms": et})
         del x, y
       except StopIteration: break
     del tl
 
     if epoch % conf.eval_every == 0:
+      vl = get_batch(fvx,fvy,batch_size=1, patch_size=conf.val_input_shape, shuffle=False, augment=True)
       eval_metrics = eval(vl, epoch=epoch)
       if eval_metrics["mean_dice"] >= conf.quality_threshold:
         print("\nsuccess", eval_metrics["mean_dice"], ">", conf.quality_threshold)

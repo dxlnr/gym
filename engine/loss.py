@@ -1,7 +1,7 @@
 import numpy as np
 from tinygrad.tensor import Tensor
 from tinygrad.shape.symbolic import Node
-from tinygrad.helpers import dtypes
+from tinygrad.dtype import dtypes
 
 def one_hot(arr: Tensor, layout="NCDHW", channel_axis=1, num_classes=3):
   arr = arr.squeeze(dim=channel_axis)

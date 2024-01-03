@@ -1,7 +1,8 @@
 """Dataloading"""
 import random, time
 import numpy as np
-from tinygrad.helpers import dtypes, prod
+from tinygrad.helpers import prod
+from tinygrad.dtype import dtypes
 from tinygrad.tensor import Tensor
 from multiprocessing import Queue, Process, shared_memory
 
