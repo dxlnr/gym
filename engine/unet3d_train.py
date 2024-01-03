@@ -5,7 +5,7 @@ import sys; sys.path.append(str(Path(__file__).resolve().parent.parent))
 import time
 from engine.dataloader import get_batch_load
 from engine.conf import Conf
-from examples.mlperf.metrics import dice_ce_loss, get_dice_score_np
+from engine.loss import dice_ce_loss, get_dice_score_np
 from extra.lr_scheduler import MultiStepLR
 from extra.models.unet3d import UNet3D
 from data.kits19 import get_batch, get_data_split, sliding_window_inference

@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import sys; sys.path.append(str(Path(__file__).resolve().parent.parent))
+from transformers import AutoTokenizer, AutoModelForCausalLM
 from tinygrad.nn.state import get_state_dict
 from models.unet3d import UNet3D
 from models.mamba import MambaLMHeadModel
@@ -20,10 +21,13 @@ def model_resnet():
     pass
 
 
-def model_mamba():
+def model_mamba(do_run=True):
     mdl = MambaLMHeadModel()
     mdl.load_from_pretrained()
     layers(mdl)
+
+    if do_run:
+        tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
 
 
 if __name__ == "__main__":
