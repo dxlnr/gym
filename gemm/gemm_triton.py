@@ -3,7 +3,7 @@ import argparse
 import time
 import triton
 import triton.language as tl
-import numpy as np
+import torch
 
 # GPU: Grid -> Block -> Thread
 
@@ -13,25 +13,16 @@ BLOCK_SIZE = 512
 
 
 @triton.jit
-def matmul_kernel(a_ptr, b_ptr, c_ptr, N):
+def matmul_kernel(a_ptr, b_ptr, c_ptr, N, K, BLOCK):
     """Matrix multiplication."""
     pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < N
-    # Load the data from VRAM to shared memory
-    a = tl.load(a_ptr + offsets, mask=mask)
-    b = tl.load(b_ptr + offsets, mask=mask)
-    # Run the computation
-    out = tl.dot(a, b)
-    # Store the data from shared memory to VRAM
-    tl.store(c_ptr + offsets, out, mask=mask)
+    tl.static_print(pid)
 
 
 def matmul(a, b, N):
     """Matrix multiplication."""
     # Allocate an empty array to store the result
-    c = np.zeros((N,N), dtype=np.float32)
+    c = torch.empty_like(a)
     # Define the kernel grid
     grid = lambda meta: (triton.cdiv(N, BLOCK_SIZE),)
     # Define the kernel
@@ -47,8 +38,8 @@ if __name__ == "__main__":
     N = args.N
 
     # Initialize two random matrices
-    A = np.random.rand(N, N).astype(np.float32)
-    B = np.random.rand(N, N).astype(np.float32)
+    A = torch.randn((N, N), device='cuda', dtype=torch.float32)
+    B = torch.randn((N, N), device='cuda', dtype=torch.float32)
 
     # Compute: N^2 memory loads output with 2N compute each
     print(f"{N*N*2*N/1e9:.1f} GFLOP.")
