@@ -28,12 +28,11 @@ uint64_t get_time() {
   #define N 1024
 #endif
 
-// float C[N*N]    __attribute__((aligned(64)));
 float CREF[N*N] __attribute__((aligned(64)));
 
 __global__ void matmul(float *a, float *b, float *c, int n) {
-  __shared__ int AA[SMEM];
-  __shared__ int BB[SMEM];
+  __shared__ float AA[SMEM];
+  __shared__ float BB[SMEM];
 
   int row = blockIdx.y * blockDim.y + threadIdx.y;
   int col = blockIdx.x * blockDim.x + threadIdx.x;
@@ -41,21 +40,16 @@ __global__ void matmul(float *a, float *b, float *c, int n) {
   int dim = blockDim.x;
   int dk = (n + dim - 1) / dim;
   int ty = threadIdx.y, tx = threadIdx.x;
-
-  printf("a %f\n", a[10]);
   
   float acc = 0.0;
   for (int i=0; i<dk; i++)
   {
     AA[ty * dim + tx] = a[(row * n) + (i*dim) + tx];
     BB[ty * dim + tx] = b[(i * dim * n) + (ty * n) + col];
-    printf("AA %f\n", AA[ty * dim + tx]);
     __syncthreads();
 
     for (int k=0; k<dim; ++k) 
     {
-      // printf("aa %f\n", AA[ty*dim +k]);
-      // printf("bb %f\n", BB[k*dim +tx]);
       acc += AA[ty*dim + k] * BB[k*dim + tx];
     }
     __syncthreads();
@@ -88,12 +82,8 @@ int main() {
   fclose(fb);
   fclose(fc);
   
-  printf("A %f\n", A[10]);
-
   int threads = 16;
   int blocks = (N + threads - 1) / threads;
-  printf("threads %d\n", threads);
-  printf("blocks %d\n", blocks);
   dim3 BLOCKS(blocks, blocks);
   dim3 THREADS(threads, threads);
 
