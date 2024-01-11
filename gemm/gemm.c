@@ -261,7 +261,6 @@ int main() {
 #endif
 
   check_mm(C, CREF, N*N);
-  printf("C[0] = %f\n", C[0]);
 #ifdef NAIVE
   printf("(naive) time: %f\n", dur);
 #elif TILE
