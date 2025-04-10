@@ -29,14 +29,16 @@ if __name__ == "__main__":
             f.write(B.data)
 
     # Compute: N^2 memory loads output with 2N compute each
-    print(f"{N*N*2*N/1e9:.1f} GFLOP.")
+    print("NUMPY")
+    print("-------------------------------------------------------------------")
+    print(f"Total number of FLOPs : {N*N*2*N/1e9:.1f} GFLOP")
     st = time.monotonic()
     # Compute reference on the CPU to verify GPU computation
-    C = A @ B.T
+    C = A @ B
     et = time.monotonic()
-    print(f"time: {(et - st):.2f}s")
+    print(f"Total runtime : {(et - st):.2f}s")
     # Floating point operations per second. (FLOPS)
-    print(f"{N*N*2*N/((et-st) * 1e9):.1f} GFLOPS.")
+    print(f"\nPerformance : {N*N*2*N/((et-st) * 1e9):.1f} GFLOP/s")
 
     if args.save:
         with open("tests/mat/matC", "wb") as f:
