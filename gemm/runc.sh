@@ -1,4 +1,4 @@
 # BUILD
-clang -O2 mm.c -o mm
+clang -O2 -march=native mm.c -o mm
 # RUN
 ./mm

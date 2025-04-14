@@ -21,9 +21,9 @@
   #define N 1024
 #endif
 
-float B[N*N];
-float A[N*N];
-float C[N*N];
+float B[N*N] __attribute__((aligned(32)));
+float A[N*N] __attribute__((aligned(32)));
+float C[N*N] __attribute__((aligned(32)));
 float CREF[N*N];
 
 uint64_t get_time() 
@@ -43,11 +43,30 @@ void check_mm(float* C, float* CREF, int n)
   } 
 }
 
+void matmul_v_kernel(int i, int j, int k, int vbsize, int n) 
+{
+  for (int bi = i; bi < i + vbsize; bi++) {
+    for (int bj = j; bj < j + vbsize; bj += 8) 
+    {
+      __m256 c = _mm256_loadu_ps(&C[bi * n + bj]); 
+      for (int bk = k; bk < k + vbsize; bk++) 
+      {
+        __m256 a = _mm256_set1_ps(A[bi * n + bk]);
+        __m256 b = _mm256_loadu_ps(&B[bk * n + bj]);
+        c = _mm256_fmadd_ps(a, b, c);
+      }
+      _mm256_storeu_ps(&C[bi * n + bj], c);
+    }
+  }
+}
+
 void matmul_kernel(int i, int j, int k, int bsize, int n) {
-  for (int bi=i; bi < bsize+i; ++bi) {
-    for (int bk=k; bk < bsize+k; ++bk) {
-      for (int bj=j; bj < bsize+j; ++bj) {
-        C[(bi*n)+bj] += A[(bi*n)+bk] * B[(bk*n)+bj];
+  int vk = 8;
+  for (int bi=i; bi < bsize+i; bi+=vk) {
+    for (int bk=k; bk < bsize+k; bk+=vk) {
+      for (int bj=j; bj < bsize+j; bj+=vk) {
+        // VECTOR TILLING
+        matmul_v_kernel(bi,bj,bk,vk,n);
       }
     }
   }
@@ -59,11 +78,12 @@ void matmul(int n, int bsize)
     for (int j = 0; j < n; j+=bsize) {
       for (int k = 0; k < n; k+=bsize) {
         // TILING
-        matmul_kernel(i,j,k,bsize, n);
+        matmul_kernel(i,j,k,bsize,n);
       }
     }
   }
 }
+
 
 int main() {
   int BSIZE = 64;
